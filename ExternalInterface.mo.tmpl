@@ -1,0 +1,138 @@
+{{preamble}}
+package ControllerInterfaceUtilities
+model ControllerInterface
+  parameter String port = "8181" "port of listening controller simulation server";
+
+  {% for port in outputPorts %}
+  parameter {{port.modelica_type}} {{port.name}}_i {{port.index_slug}};
+  {% endfor %}
+
+  // input ports
+  {% for port in inputPorts %}
+  Modelica.Blocks.Interfaces.{{port.interface_type}} {{port.name}}{{port.index_slug}} annotation(
+    Placement(visible = true, transformation(origin = {-100, {{port.y_position}} }, extent = { {-20, -20}, {20, 20} }, rotation = 0), iconTransformation(origin = {-100, {{port.y_position}} }, extent = { {-20, -20}, {20, 20} }, rotation = 0)));
+  {% endfor %}
+
+  // output ports
+  {% for port in outputPorts %}
+  discrete Modelica.Blocks.Interfaces.{{port.interface_type}} {{port.name}}{{port.index_slug}} annotation(
+    Placement(visible = true, transformation(origin = {100, {{port.y_position}} }, extent = { {-10, -10}, {10, 10} }, rotation = 0), iconTransformation(origin = {100, 0}, extent = { {-10, -10}, {10, 10} }, rotation = 0)));
+  {% endfor %}
+
+  ControllerInterfaceUtilities.ConnectionObject obj = ControllerInterfaceUtilities.ConnectionObject(port=port);
+
+  discrete Real eventDeltaT[{{event_queue_max_depth}}];
+  discrete Real acquisitionTime;
+  discrete Real acquisitionDeltaT;
+  Real timeToEvent[{{event_queue_max_depth}}];
+  Boolean eventTrigger[{{event_queue_max_depth}}];
+
+initial equation
+  acquisitionTime = time + 1e-9;
+
+  for i in 1:{{event_queue_max_depth}} loop
+    timeToEvent[i] = -1;
+  end for;
+
+  // initial value for each output port
+  {% for port in outputPorts %}
+  {{port.name}} = {{port.name}}_i;
+  {% endfor %}
+
+equation
+
+  when time >= pre(acquisitionTime) then
+
+    (
+     acquisitionDeltaT, 
+     eventDeltaT
+    ) = ControllerInterfaceUtilities.update(obj,time,
+     {% for i in inputPorts %}
+     {{i.name}}{%if not loop.last%},{%endif%}
+
+     {% endfor %}
+    );
+
+    acquisitionTime = time + acquisitionDeltaT;
+    for i in 1:{{event_queue_max_depth}} loop
+      reinit(timeToEvent[i],eventDeltaT[i]);
+    end for;
+
+  end when;
+  
+  for i in 1:{{event_queue_max_depth}} loop
+    der(timeToEvent[i]) = -1;
+    eventTrigger[i] = (timeToEvent[i]<=0);
+  end for;
+
+  when eventTrigger then
+    (
+     {%for i in outputPorts%}
+     {{i.name}}{%if not loop.last%},{%endif%}
+
+     {%endfor%}
+    ) = ControllerInterfaceUtilities.getNextOutputValues(obj);
+  end when;
+
+
+end ControllerInterface;
+
+
+
+  class ConnectionObject 
+    extends ExternalObject;
+    
+    function constructor
+      input String port;
+      output ConnectionObject connection;
+      external "C" connection = initConnectionObject(port)
+        annotation(Library="connectionobject",
+                   LibraryDirectory="modelica://{{modelica_library_directory}}");
+    end constructor;
+
+    function destructor
+      input ConnectionObject connection;
+      external "C" destroyConnectionObject(connection)
+        annotation(Library="connectionobject",
+                   LibraryDirectory="modelica://{{modelica_library_directory}}");
+    end destructor;
+
+  end ConnectionObject;
+
+  impure function update
+    input ConnectionObject con;
+    input Real t;
+
+    {%for i in inputPorts%}
+    {{i.modelica_update_function_argument}}
+    {%endfor%}
+
+    output Real nextAcquisitionDeltaT;
+    output Real eventDeltaT[{{event_queue_max_depth}}];
+
+    external "C" update(con,t,
+           {%for i in inputPorts%}
+           {{i.name}},
+           {%endfor%}
+           nextAcquisitionDeltaT,
+           eventDeltaT)
+      annotation(Library="connectionobject",
+                 LibraryDirectory="modelica://{{modelica_library_directory}}"); //check
+  end update;
+
+  impure function getNextOutputValues
+    input ConnectionObject obj;
+    {%for i in outputPorts%}
+    {{i.modelicaGetNextOutputValuesArgument}}
+    {%endfor%}
+    external "C" getNextEventValues(obj,
+                                 {%for i in outputPorts%}
+                                 {{i.name}}{%if not loop.last%},{%endif%}
+
+                                 {%endfor%}
+                                     )
+      annotation(Library="connectionobject",
+                 LibraryDirectory="modelica://{{modelica_library_directory}}");
+  end getNextOutputValues;
+
+end ControllerInterfaceUtilities;

@@ -1,0 +1,170 @@
+import cocotb
+from cocotb.triggers import Timer, Edge, RisingEdge, FallingEdge, Join
+
+jsonString = {{json_string}}
+
+class ModelInterface:
+
+    def __init__(self,dut,port={{port}}):
+
+        # create a listening socket that modelica will connect to
+        listener = socket.socket()
+        listener.bind(("localhost",port))
+        listener.listen()
+        print("MotorModelInterface waiting for connection on {}".format(port))
+        sock,addr_tup = listener.accept()
+        self.listener = listener
+        self.sock = sock
+
+        self.current_stream = AxisStream(dut.clk,
+                dut.i_axis_tdata,
+                dut.i_axis_tvalid,
+                dut.i_axis_tready)
+
+        self.dut = dut
+
+        self.inputDict = json.loads(jsonString)
+
+        #self.events = []
+        self.deltaT = []
+        {%for i in outputPorts%}
+        self.{{i.name}}Queue = []
+        {%endfor%}
+
+        #instantiate input port objects
+        self.inputPorts = []
+        for i in self.inputDict["modelica_interface_block_inputs"]:
+          if i["class"] == Real:
+            self.inputPorts.append(RealPort(self,i))
+          else:
+            raise Warning("unsupported input type: {}".format(i["class"]))
+
+        #instantiate output port objects
+        self.outputPorts = []
+        for i in self.inputDict["modelica_interface_block_outputs"]:
+          if i["class"] == Boolean:
+            self.outputPorts.append(BooleanPort(self,i))
+          else:
+            raise Warning("unsupported output type: {}".format(i["class"]))
+
+    @cocotb.coroutine
+    def coupler(self):
+
+        # start thread to monitor output events
+        eventListenerThread = cocotb.fork(self.eventListener())
+
+        previousAcqTime = 0
+        while True:
+
+            # receive and decode all of the incoming signal data
+            # and write the signals to the controller
+            #print("receiving data from modelica")
+            sensorBytes = self.sock.recv({{cosimulationInterface.input_struct_size}})
+            #print("received {} bytes".format(len(sensorBytes)))
+            {%for i in inputPorts%}
+            {{i.name}}{%if not loop.last%},
+{%endif%}
+            {%endfor%} 
+              = struct.unpack("{{cosimulationInterface.input_struct_unpack_string}}",sensorBytes)  
+
+            # simulate resolver output
+            self.dut.resolver_data = theta
+            sumbits = 0
+            for i in range(12):
+              sumbits += (theta >> i) & 0b1
+            self.dut.resolver_parity = sumbits & 0b1
+
+            s = struct.pack(">hh",Ia,Ib)
+            iWriteThread = cocotb.fork(self.current_stream.write(int.from_bytes(s,"big")))
+
+            # run the controller until a new signal acquisition is requested by the controller 
+            #print("waiting for rising edge of acquisition trigger")
+            yield RisingEdge(self.dut.trigger)
+            #yield Timer(int(1/20000.0*1e9),"ns")
+            #print("rising edge of acquisition trigger")
+            #print("previousAcqTime:{}".format(previousAcqTime))
+            nextAcqTime = int(get_sim_time("ns"))
+            #print("nextAcqTime:{}".format(nextAcqTime))
+            acqDeltaT = nextAcqTime - previousAcqTime
+            #print("acqDeltaT:{}".format(acqDeltaT))
+
+            # write out output events and time of the next signal acquisition event
+
+            for event in self.events:
+                outputValues.append(event.newValue)
+                deltaT.append(int(event.time - previousAcqTime))
+
+            # pad with negative deltaT events
+            numEvents = len(deltaTMonotone)
+            if numEvents > {{event_queue_max_depth}}:
+                raise Warning("event queue overflow!")
+            for i in range({{event_queue_max_depth}}-numEvents):
+                deltaTMonotone.append(int(-123))
+
+            bmsg  = struct.pack(">i{{event_queue_max_depth}}i",
+                                acqDeltaT,
+                                *deltaT
+                               )
+            self.sock.send(bmsg)
+
+            for i in self.outputPorts:
+              i.sendEventData()
+
+            previousAcqTime = nextAcqTime
+
+    @cocotb.coroutine
+    def eventListener(self):
+        while True:
+            yield RisingEdge(self.dut.event)
+            self.pwmEvents.append(PwmEvent(value))
+
+class Port:
+
+    def __init__(self,interfaceObject):
+        self.interfaceObject = interfaceObject
+        self.queueDepth = self.interfaceObject.queueDepth
+        self.name = d["name"]
+        self.width = d["width"]
+
+class BooleanPort(Port):
+
+    def __init__(self,interfaceObject,d):
+        super.__init__(interfaceObject)
+        self.numChar = ceil(self.width / 8)
+        self.signal = eval("self.interfaceObject.dut.{}".format(d["name"]))
+        self.events = []
+
+    def capture(self):
+        try:
+            value = self.signal.value.integer
+        except:
+            print("failed to retrieve pwm value, using 0b000 instead")
+            value = 0
+
+        for i in range(self.numChar):
+          c = (value >> 8*i) & 0xFF
+          self.events.append(c)
+
+    def sendEventData(self):
+        msg = struct.pack(">{}c".format(self.queueDepth*self.numChar),
+                *self.events,
+                (numChar*self.queueDepth-len(self.events))*[0])
+        self.interfaceObject.sock.send(msg)
+        self.events = []
+
+class RealPort(Port):
+
+    def __init__(self,interfaceObject,d):
+        super.__init__(interfaceObject)
+        self.callback = None
+
+    def recv(self):
+        raw = self.interfaceObject.sock.recv(self.width*4)
+        self.x = struct.unpack(">{}i".format(self.width),raw)
+        self.callback()
+
+    def setCallback(self,fn):
+        self._callback = fn
+
+    def callBack(self):
+        self._callback(self)

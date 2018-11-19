@@ -1,0 +1,51 @@
+{
+  "preamble":"within SomeModule;",
+
+  "modelica_output_file":"./out.mo",
+  "c_output_file":"out.c",
+  "lib_output_file":"/tmp/out.so",
+  "py_output_file":"ModelInterface.py",
+
+  "modelica_library_directory":"bla",
+  "makefile":"./Makefile",
+
+  "event_queue_max_depth":35,
+
+  "modelica_interface_block_inputs":[
+    {"type":"Real",
+     "name":"current_0",
+     "width":2,
+     "digitization_code_snippet":"current_0[i]*655.35"
+    },
+    {"type":"Real",
+     "name":"current_1",
+     "width":2,
+     "digitization_code_snippet":"current_1[i]*655.35"
+    },
+    {"type":"Real",
+     "name":"theta_0",
+     "width":1,
+     "digitization_code_snippet":"fmod((theta_0 * 1303.479), 4095)"
+    },
+    {"type":"Real",
+     "name":"theta_1",
+     "width":1,
+     "digitization_code_snippet":"fmod((theta_1 * 1303.479), 4095)"
+    }
+  ],
+
+  "modelica_interface_block_outputs":[
+    {"type":"Boolean",
+     "name":"pwm0",
+     "width":32
+    },
+    {"type":"Boolean",
+     "name":"pwm1",
+     "width":3
+    }
+  ],
+
+  "template_directory":".",
+  "port":8891
+
+}

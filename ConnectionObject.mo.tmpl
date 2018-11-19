@@ -1,0 +1,61 @@
+within MotorModel;
+package ControllerInterface
+
+  class ConnectionObject 
+    extends ExternalObject;
+    
+    function constructor
+      input String port;
+      output ConnectionObject connection;
+      external "C" connection = initConnectionObject(port)
+        annotation(Library="connectionobject",
+                   LibraryDirectory="modelica://MotorModel");
+    end constructor;
+
+    function destructor
+      input ConnectionObject connection;
+      external "C" destroyConnectionObject(connection)
+        annotation(Library="connectionobject",
+                   LibraryDirectory="modelica://MotorModel");
+    end destructor;
+
+  end ConnectionObject;
+
+  impure function focUpdate
+    input ConnectionObject con;
+    input Real t;
+    input Real Ia;
+    input Real Ib;
+    input Real phi;
+
+    output Real nextCurrentAcquisitionDeltaT;
+
+    output Real pwmDeltaT[12];
+
+    external "C" focUpdate(con,t,Ia,Ib,phi,nextCurrentAcquisitionDeltaT,pwmDeltaT)
+      annotation(Library="connectionobject",
+                 LibraryDirectory="modelica://MotorModel");
+  end focUpdate;
+
+  impure function getNextPwmValue
+    input ConnectionObject obj;
+    output Boolean pwm1;
+    output Boolean pwm2;
+    output Boolean pwm3;
+    external "C" getNextPwmValue(obj,pwm1,pwm2,pwm3)
+      annotation(Library="connectionobject",
+                 LibraryDirectory="modelica://MotorModel");
+  end getNextPwmValue;
+
+  impure function getPwmValueAtTime
+    input ConnectionObject obj;
+    input Real t;
+    output Boolean pwm1;
+    output Boolean pwm2;
+    output Boolean pwm3;
+    external "C" getPwmValueAtTime(obj,time,pwm1,pwm2,pwm3)
+      annotation(Library="connectionobject",
+                 LibraryDirectory="modelica://MotorModel");
+  end getPwmValueAtTime;
+
+end ControllerInterface;

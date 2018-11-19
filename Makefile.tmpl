@@ -1,0 +1,4 @@
+{{lib_output_file}} : {{c_output_file}}
+	clang -c -fPIC {{c_output_file}} -o temp.o
+	clang -shared temp.o -o {{lib_output_file}}
+	rm temp.o
