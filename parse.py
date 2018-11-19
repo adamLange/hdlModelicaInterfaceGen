@@ -20,11 +20,13 @@ class Port:
     name
     index_slug
     """
-    def __init__(self,block,d,index):
+    def __init__(self,cosimulation_interface,d,index):
         self.d = d
 
         self.index = index
-        self.block = block
+        self.cosimulation_interface = cosimulation_interface
+
+        self.width = d["width"]
 
         if d["direction"] == "input":
             self.direction = "input"
@@ -62,9 +64,9 @@ class Port:
     @property
     def y_position(self):
       if self.direction == "input":
-        nPorts = len(self.block.inputPorts)
+        nPorts = len(self.cosimulation_interface.inputPorts)
       else: #output
-        nPorts = len(self.block.outputPorts)
+        nPorts = len(self.cosimulation_interface.outputPorts)
 
       if nPorts == 1:
         return 0
@@ -78,9 +80,9 @@ class Port:
     @property
     def output_struct_member(self):
         if self.d["type"] == "Real":
-            return "double {}[{}];".format(self.name,self.block.event_queue_max_depth*self.d["width"])
+            return "double {}[{}];".format(self.name,self.cosimulation_interface.event_queue_max_depth*self.d["width"])
         if self.d["type"] == "Boolean":
-            numCharRequired = ceil(self.d["width"]/8)*self.block.event_queue_max_depth
+            numCharRequired = ceil(self.d["width"]/8)*self.cosimulation_interface.event_queue_max_depth
             return "char {}[{}];".format(self.name,numCharRequired)
 
     @property
@@ -114,14 +116,14 @@ class Port:
 
     @property
     def digitization_code_snippet(self):
-        if self.d["width"] > 1:
-            s = ""
-            s += "for (int i=0; i<{}; i++){{\n".format(self.d["width"])
-            s += "  sensorData.{}[i] = htonl({});\n".format(self.name,self.d["digitization_code_snippet"])
-            s += "};"
-        else:
-            s = "sensorData.{} = htonl({});".format(self.name,self.d["digitization_code_snippet"])
-        return s
+        return self.d["digitization_code_snippet"]
+
+    @property
+    def send_c(self):
+        context = {"port":self,
+                   "num_bytes":self.width*4}
+        t = self.cosimulation_interface.env.get_template('send.c.tmpl')
+        return t.render(**context)
 
     @property
     def getNextEventValues_argument(self):
@@ -141,8 +143,8 @@ class Port:
 
 class BooleanPort(Port):
 
-  def __init__(self,block,d,index):
-      super().__init__(block,d,index)
+  def __init__(self,cosimulation_interface,d,index):
+      super().__init__(cosimulation_interface,d,index)
       self.numStructElementsPerEvent = ceil(self.d["width"]/8)
 
   @property
@@ -156,7 +158,7 @@ class BooleanPort(Port):
 
   @property
   def output_struct_member(self):
-      numCharRequired = ceil(self.d["width"]/8)*self.block.event_queue_max_depth
+      numCharRequired = ceil(self.d["width"]/8)*self.cosimulation_interface.event_queue_max_depth
       return "char {}[{}];".format(self.name,numCharRequired)
 
   @property
@@ -203,12 +205,12 @@ class BooleanPort(Port):
 
   @property
   def output_struct_pack_string(self):
-    return "{}".format(self.block.event_queue_max_depth*self.serialized_size) + "c"
+    return "{}".format(self.cosimulation_interface.event_queue_max_depth*self.serialized_size) + "c"
 
 class RealPort(Port):
 
-  def __init__(self,block,d,index):
-    super().__init__(block,d,index)
+  def __init__(self,cosimulation_interface,d,index):
+    super().__init__(cosimulation_interface,d,index)
 
   @property
   def serialized_size(self):
@@ -237,6 +239,10 @@ class CosimulationInterface:
         self.event_queue_max_depth = inputDict["event_queue_max_depth"]
         self.inputPorts = []
         self.outputPorts = []
+        self.env = jinja2.Environment(loader=jinja2.FileSystemLoader(inputDict["template_directory"]),
+                            lstrip_blocks=True,
+                            trim_blocks=True
+                            )
 
     def addInputPort(self,d):
         index = len(self.inputPorts)

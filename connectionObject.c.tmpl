@@ -36,7 +36,7 @@ typedef struct{
   {%for i in outputPorts%}
   {{i.output_struct_member}}
   {%endfor%}
-  double modelicaTimeUpdateCalled;
+  //double modelicaTimeUpdateCalled;
   int eventIndex;
   int numEvents;
 } ConnectionObject;
@@ -118,32 +118,19 @@ void update(void* ref, double time,
                {% for i in inputPorts %}
                {{i.input_update_argument}},
                {%endfor%}
-               double *nextCurrentAcquisitionDeltaT,
-               double *pwmDeltaT
+               double *nextAcquisitionDeltaT,
+               double *eventDeltaT
                )
 {
   //ModelicaMessage("update start\n\0");
   ConnectionObject *obj = (ConnectionObject*)ref;
   dataToCtl sensorData;
 
-  obj->modelicaTimeUpdateCalled = time;
+  //obj->modelicaTimeUpdateCalled = time;
 
-  {% for i in inputPorts%}
-  {{i.digitization_code_snippet}}
-  {% endfor%}
-
-  char* sendPtr;
-  sendPtr = (char*)&sensorData;
-  int bytesSent, bytesToSend;
-  bytesToSend = sizeof(dataToCtl);
-  //ModelicaMessage("send while loop:\n\0");
-  while (bytesToSend >= 1){
-    //ModelicaFormatMessage("    %d bytesToSend\n\0",bytesToSend);
-    bytesSent = send(obj->sockfd,sendPtr,bytesToSend,0);
-    if (bytesSent == -1) perror("error at focUpdate send");
-    sendPtr += bytesSent;
-    bytesToSend -= bytesSent;
-  }
+{% for i in inputPorts%}
+{{i.send_c}}
+{% endfor%}
 
   dataFromCtl cmdData;
   char* recvPtr;
@@ -151,6 +138,7 @@ void update(void* ref, double time,
   int bytesToRecv, bytesRecvd;
   bytesToRecv = sizeof(dataFromCtl);
   //ModelicaMessage("recv while loop:\n\0");
+
   while (bytesToRecv >= 1){
     //ModelicaFormatMessage("    %d bytesToRecv\n\0",bytesToRecv);
     bytesRecvd = recv(obj->sockfd,recvPtr,bytesToRecv,0);
@@ -159,16 +147,15 @@ void update(void* ref, double time,
     bytesToRecv -= bytesRecvd;
   }
 
-  *nextCurrentAcquisitionDeltaT = ntohl(cmdData.nextAcquisitionDeltaT) * 1e-9;
-  //ModelicaFormatMessage("%f",*nextCurrentAcquisitionDeltaT);
+  *nextAcquisitionDeltaT = ntohl(cmdData.nextAcquisitionDeltaT) * 1e-9;
 
   obj->eventIndex = 0;
   obj->numEvents = EVENT_QUEUE_MAX_DEPTH;
   //ModelicaMessage("Received events:");
   for (int i = 0; i < EVENT_QUEUE_MAX_DEPTH ; i++){
-    pwmDeltaT[i] = (uint32_t)(ntohl(cmdData.pwmDeltaT[i])) * 1e-9;
-    obj->pwm[i] = cmdData.pwmNext[i];
-    obj->eventTime[i] = (uint32_t)(ntohl(cmdData.pwmDeltaT[i])) * 1e-9;
+    eventDeltaT[i] = (uint32_t)(ntohl(cmdData.eventDeltaT[i])) * 1e-9;
+    //obj->pwm[i] = cmdData.pwmNext[i];
+    obj->eventTime[i] = (uint32_t)(ntohl(cmdData.eventDeltaT[i])) * 1e-9;
 
   }
 

@@ -1,0 +1,16 @@
+  // sending {{port.name}}
+  //   width: {{port.width}}
+
+{%if port.width > 1%}
+  int32_t digitized_{{port.name}}[{{port.width}}];
+  for (int i=0; i<{{port.width}}; i++){
+    digitized_{{port.name}}[i] = htonl({{port.digitization_code_snippet}});
+  }
+  send_n_bytes(obj,digitized_{{port.name}},{{num_bytes}});
+
+{%else%}
+  int32_t digitized_{{port.name}};
+  digitized_{{port.name}} = htonl({{port.digitization_code_snippet}});
+  send_n_bytes(obj,&digitized_{{port.name}},{{num_bytes}});
+
+{%endif%}
