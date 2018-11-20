@@ -122,7 +122,7 @@ class Port:
     def send_c(self):
         context = {"port":self,
                    "num_bytes":self.width*4}
-        t = self.cosimulation_interface.env.get_template('send.c.tmpl')
+        t = self.cosimulation_interface.env.get_template('real_send.c.tmpl')
         return t.render(**context)
 
     @property
@@ -206,6 +206,15 @@ class BooleanPort(Port):
   @property
   def output_struct_pack_string(self):
     return "{}".format(self.cosimulation_interface.event_queue_max_depth*self.serialized_size) + "c"
+
+  @property
+  def recv_c(self):
+    context = {"port":self,
+               "num_bytes":self.numStructElementsPerEvent\
+                   *self.cosimulation_interface.event_queue_max_depth}
+    t = self.cosimulation_interface.env.get_template('boolean_recv.c.tmpl')
+    print(t.render(**context))
+    return t.render(**context)
 
 class RealPort(Port):
 

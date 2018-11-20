@@ -126,6 +126,12 @@ class Port:
         self.name = d["name"]
         self.width = d["width"]
 
+    def setCallback(self,fn):
+        self._callback = fn
+
+    def callBack(self):
+        self._callback(self)
+
 class BooleanPort(Port):
 
     def __init__(self,interfaceObject,d):
@@ -162,9 +168,3 @@ class RealPort(Port):
         raw = self.interfaceObject.sock.recv(self.width*4)
         self.x = struct.unpack(">{}i".format(self.width),raw)
         self.callback()
-
-    def setCallback(self,fn):
-        self._callback = fn
-
-    def callBack(self):
-        self._callback(self)
