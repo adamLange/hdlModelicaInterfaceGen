@@ -27,9 +27,6 @@ class ModelInterface:
 
         #self.events = []
         self.deltaT = []
-        {%for i in outputPorts%}
-        self.{{i.name}}Queue = []
-        {%endfor%}
 
         #instantiate input port objects
         self.inputPorts = []
@@ -53,70 +50,60 @@ class ModelInterface:
         # start thread to monitor output events
         eventListenerThread = cocotb.fork(self.eventListener())
 
-        previousAcqTime = 0
+        self.previousAcqTime = 0
         while True:
 
-            # receive and decode all of the incoming signal data
-            # and write the signals to the controller
-            #print("receiving data from modelica")
-            sensorBytes = self.sock.recv({{cosimulationInterface.input_struct_size}})
-            #print("received {} bytes".format(len(sensorBytes)))
-            {%for i in inputPorts%}
-            {{i.name}}{%if not loop.last%},
-{%endif%}
-            {%endfor%} 
-              = struct.unpack("{{cosimulationInterface.input_struct_unpack_string}}",sensorBytes)  
-
-            # simulate resolver output
-            self.dut.resolver_data = theta
-            sumbits = 0
-            for i in range(12):
-              sumbits += (theta >> i) & 0b1
-            self.dut.resolver_parity = sumbits & 0b1
-
-            s = struct.pack(">hh",Ia,Ib)
-            iWriteThread = cocotb.fork(self.current_stream.write(int.from_bytes(s,"big")))
+            # receive incoming signal data from model
+            for i in inputPorts:
+              i.recv()
 
             # run the controller until a new signal acquisition is requested by the controller 
             #print("waiting for rising edge of acquisition trigger")
             yield RisingEdge(self.dut.trigger)
-            #yield Timer(int(1/20000.0*1e9),"ns")
-            #print("rising edge of acquisition trigger")
-            #print("previousAcqTime:{}".format(previousAcqTime))
-            nextAcqTime = int(get_sim_time("ns"))
-            #print("nextAcqTime:{}".format(nextAcqTime))
+            self.nextAcqTime = int(get_sim_time("ns"))
             acqDeltaT = nextAcqTime - previousAcqTime
-            #print("acqDeltaT:{}".format(acqDeltaT))
 
             # write out output events and time of the next signal acquisition event
 
             for event in self.events:
                 outputValues.append(event.newValue)
-                deltaT.append(int(event.time - previousAcqTime))
 
             # pad with negative deltaT events
-            numEvents = len(deltaTMonotone)
+            numEvents = len(deltaT)
             if numEvents > {{event_queue_max_depth}}:
                 raise Warning("event queue overflow!")
             for i in range({{event_queue_max_depth}}-numEvents):
-                deltaTMonotone.append(int(-123))
+                deltaT.append(int(-123))
 
             bmsg  = struct.pack(">i{{event_queue_max_depth}}i",
                                 acqDeltaT,
                                 *deltaT
                                )
             self.sock.send(bmsg)
+            self.deltaT = []
 
             for i in self.outputPorts:
               i.sendEventData()
 
-            previousAcqTime = nextAcqTime
+            self.previousAcqTime = nextAcqTime
 
     @cocotb.coroutine
     def eventListener(self):
         while True:
             yield RisingEdge(self.dut.event)
-            self.pwmEvents.append(PwmEvent(value))
+            tCapture = int(get_sim_time("ns"))
+            deltaT.append(tCapture - self.previousAcqTime))
+            for i in self.outputPorts:
+                i.capture()
+
+    def getPortByName(self,name):
+      ports = []
+      ports.extend(self.inputPorts)
+      ports.extend(self.outputPorts)
+      for i in ports:
+        if i.name == name:
+          return i
+      return None
 
 class Port:
 
@@ -166,5 +153,5 @@ class RealPort(Port):
 
     def recv(self):
         raw = self.interfaceObject.sock.recv(self.width*4)
-        self.x = struct.unpack(">{}i".format(self.width),raw)
-        self.callback()
+        self.y = struct.unpack(">{}i".format(self.width),raw)
+        self._callback(self)
