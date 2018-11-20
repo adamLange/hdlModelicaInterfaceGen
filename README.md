@@ -40,4 +40,4 @@ A few files will be generated:
     viewed on the interface block diagram icon in modelica)
   - Expand on the documentation (there's this README and https://hackaday.io/project/161284-coupled-physics-and-fpga-simulation so far...)
   - Trim down the communication interface.  Now if you set the event queue depth to say 12, whether only
-    3 events occur or 12, the number of bytes are sent across the network.
+    3 events occur or 12, the number of bytes are sent across the network is the same.
