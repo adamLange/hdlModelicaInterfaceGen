@@ -56,14 +56,17 @@ class ModelInterface:
         while True:
 
             # receive incoming signal data from model
+            print("receiving signals...")
             for i in self.inputPorts:
               i.recv()
 
             # run the controller until a new signal acquisition is requested by the controller 
-            #print("waiting for rising edge of acquisition trigger")
+            print("waiting for rising edge of acquisition trigger...")
             yield RisingEdge(self.dut.trigger)
             self.nextAcqTime = int(get_sim_time("ns"))
             acqDeltaT = self.nextAcqTime - self.previousAcqTime
+            print("  trigger fired at {} ns".format(self.nextAcqTime))
+            print("  acqDeltaT:{}".format(acqDeltaT))
 
             # write out output events and time of the next signal acquisition event
 
@@ -71,19 +74,24 @@ class ModelInterface:
             #    outputValues.append(event.newValue)
 
             # pad with negative deltaT events
+            print("padding with negative deltaT events...")
             numEvents = len(self.deltaT)
             if numEvents > {{event_queue_max_depth}}:
                 raise Warning("event queue overflow!")
+            print("  before padding, deltaT = {}".format(self.deltaT))
             for i in range({{event_queue_max_depth}}-numEvents):
                 self.deltaT.append(int(-123))
+            print("  after padding, deltaT = {}".format(self.deltaT))
 
             bmsg  = struct.pack(">i{{event_queue_max_depth}}i",
                                 acqDeltaT,
                                 *self.deltaT
                                )
+            print("sending {} bytes of time info".format(len(bmsg)))
             self.sock.send(bmsg)
             self.deltaT = []
 
+            print("sending event data of each port...")
             for i in self.outputPorts:
               i.sendEventData()
 
@@ -92,7 +100,9 @@ class ModelInterface:
     @cocotb.coroutine
     def eventListener(self):
         while True:
+            print("eventListener waiting for rising edge of eventTrigger..")
             yield RisingEdge(self.dut.eventTrigger)
+            print("eventListener triggered")
             tCapture = int(get_sim_time("ns"))
             self.deltaT.append(tCapture - self.previousAcqTime)
             for i in self.outputPorts:
@@ -127,6 +137,7 @@ class BooleanPort(Port):
         self.events = []
 
     def capture(self):
+        print("BooleanPort.capture called")
         try:
             value = self.signal.value.integer
         except:
@@ -144,7 +155,9 @@ class BooleanPort(Port):
         print(self.events)
         packString = ">{}c".format(self.queueDepth*self.numChar)
         print("pack string:{}".format(packString))
+        print("BooleanPort.sendEventData sending:{}".format(self.events))
         msg = struct.pack(packString,*self.events)
+        print("length={}".format(len(msg)))
         self.interfaceObject.sock.send(msg)
         self.events = []
 
@@ -156,7 +169,7 @@ class RealPort(Port):
 
     def recv(self):
         raw = self.interfaceObject.sock.recv(self.width*4)
-        print("raw")
-        print(raw)
         self.y = struct.unpack(">{}i".format(self.width),raw)
+        print("RealPort.recv received: {}".format(self.y))
+        print("length = {} bytes".format(len(raw)))
         self.callback(self)

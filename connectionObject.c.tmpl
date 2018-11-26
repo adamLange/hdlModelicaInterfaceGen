@@ -35,7 +35,7 @@ void *get_in_addr(struct sockaddr *sa)
 
 typedef struct{
   int sockfd;
-  double eventTime[EVENT_QUEUE_MAX_DEPTH];
+  //double eventTime[EVENT_QUEUE_MAX_DEPTH];
   {%for i in outputPorts%}
   {{i.output_struct_member}}
   {%endfor%}
@@ -126,12 +126,14 @@ void update(void* ref, double time,
   ModelicaMessage("recv time values from controller\n\0");
 
   int32_t time_buf[EVENT_QUEUE_MAX_DEPTH+1];
-  recv_n_bytes(obj,(char*)eventDeltaT,(EVENT_QUEUE_MAX_DEPTH+1)*4);
+  recv_n_bytes(obj,(char*)time_buf,(EVENT_QUEUE_MAX_DEPTH+1)*4);
 
-  *eventDeltaT = (uint32_t)(ntohl(time_buf[0])) * 1e-9;
+  *nextAcquisitionDeltaT = ((uint32_t)(ntohl(time_buf[0]))) * 1e-9;
+  ModelicaFormatMessage("nextAcquisitionDeltaT: %f\n",*nextAcquisitionDeltaT);
 
   for (int i = 1; i <= EVENT_QUEUE_MAX_DEPTH; i++){
-    obj->eventTime[i] = (uint32_t)(ntohl(time_buf[i])) * 1e-9;
+    //obj->eventTime[i] = (uint32_t)(ntohl(time_buf[i])) * 1e-9;
+    eventDeltaT[i] = (uint32_t)(ntohl(time_buf[i])) * 1e-9;
   }
 
   // recv event values from controller
@@ -184,12 +186,15 @@ void send_n_bytes(void *ref,void* data,int num_bytes){
 
 void recv_n_bytes(void *ref, void* buf, int num_bytes){
   ConnectionObject *obj = (ConnectionObject*)ref;
+  ModelicaFormatMessage("recn_n_bytes invoked with %d bytes to recv\n",num_bytes);
   char* recvPtr;
   recvPtr = (char*)buf;
   int bytesToRecv, bytesRecvd;
   bytesToRecv = num_bytes;
   while (bytesToRecv >= 1){
+    ModelicaFormatMessage("  bytes to recv: %d\n",bytesToRecv);
     bytesRecvd = recv(obj->sockfd,recvPtr,bytesToRecv,0);
+    ModelicaFormatMessage("  bytes recvd: %d\n",bytesRecvd);
     if (bytesRecvd == -1) perror("error at focUpdate recv");
     recvPtr += bytesRecvd;
     bytesToRecv -= bytesRecvd;
