@@ -1,3 +1,5 @@
   // recv {{port.name}}
+  {%if debug%}
   ModelicaMessage("BooleanPort receiving\n");
+  {%endif%}
   recv_n_bytes(obj,obj->{{port.name}},{{num_bytes}});

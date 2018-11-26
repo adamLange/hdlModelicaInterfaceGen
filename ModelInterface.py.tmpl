@@ -56,17 +56,23 @@ class ModelInterface:
         while True:
 
             # receive incoming signal data from model
+            {%if debug%}
             print("receiving signals...")
+            {%endif%}
             for i in self.inputPorts:
               i.recv()
 
             # run the controller until a new signal acquisition is requested by the controller 
+            {%if debug%}
             print("waiting for rising edge of acquisition trigger...")
+            {%endif%}
             yield RisingEdge(self.dut.trigger)
             self.nextAcqTime = int(get_sim_time("ns"))
             acqDeltaT = self.nextAcqTime - self.previousAcqTime
+            {%if debug%}
             print("  trigger fired at {} ns".format(self.nextAcqTime))
             print("  acqDeltaT:{}".format(acqDeltaT))
+            {%endif%}
 
             # write out output events and time of the next signal acquisition event
 
@@ -74,24 +80,34 @@ class ModelInterface:
             #    outputValues.append(event.newValue)
 
             # pad with negative deltaT events
+            {%if debug%}
             print("padding with negative deltaT events...")
+            {%endif%}
             numEvents = len(self.deltaT)
             if numEvents > {{event_queue_max_depth}}:
                 raise Warning("event queue overflow!")
+            {%if debug%}
             print("  before padding, deltaT = {}".format(self.deltaT))
+            {%endif%}
             for i in range({{event_queue_max_depth}}-numEvents):
                 self.deltaT.append(int(-123))
+            {%if debug%}
             print("  after padding, deltaT = {}".format(self.deltaT))
+            {%endif%}
 
             bmsg  = struct.pack(">i{{event_queue_max_depth}}i",
                                 acqDeltaT,
                                 *self.deltaT
                                )
+            {%if debug%}
             print("sending {} bytes of time info".format(len(bmsg)))
+            {%endif%}
             self.sock.send(bmsg)
             self.deltaT = []
 
+            {%if debug%}
             print("sending event data of each port...")
+            {%endif%}
             for i in self.outputPorts:
               i.sendEventData()
 
@@ -100,9 +116,13 @@ class ModelInterface:
     @cocotb.coroutine
     def eventListener(self):
         while True:
+            {%if debug%}
             print("eventListener waiting for rising edge of eventTrigger..")
+            {%endif%}
             yield RisingEdge(self.dut.eventTrigger)
+            {%if debug%}
             print("eventListener triggered")
+            {%endif%}
             tCapture = int(get_sim_time("ns"))
             self.deltaT.append(tCapture - self.previousAcqTime)
             for i in self.outputPorts:
@@ -137,7 +157,9 @@ class BooleanPort(Port):
         self.events = []
 
     def capture(self):
+        {%if debug%}
         print("BooleanPort.capture called")
+        {%endif%}
         try:
             value = self.signal.value.integer
         except:
@@ -150,14 +172,22 @@ class BooleanPort(Port):
 
     def sendEventData(self):
         z = ((self.numChar*(self.queueDepth-len(self.events)))*[bytes([0])])
+        {%if debug%}
         print(self.events)
+        {%endif%}
         self.events.extend(z)
+        {%if debug%}
         print(self.events)
+        {%endif%}
         packString = ">{}c".format(self.queueDepth*self.numChar)
+        {%if debug%}
         print("pack string:{}".format(packString))
         print("BooleanPort.sendEventData sending:{}".format(self.events))
+        {%endif%}
         msg = struct.pack(packString,*self.events)
+        {%if debug%}
         print("length={}".format(len(msg)))
+        {%endif%}
         self.interfaceObject.sock.send(msg)
         self.events = []
 
@@ -170,6 +200,8 @@ class RealPort(Port):
     def recv(self):
         raw = self.interfaceObject.sock.recv(self.width*4)
         self.y = struct.unpack(">{}i".format(self.width),raw)
+        {%if debug%}
         print("RealPort.recv received: {}".format(self.y))
         print("length = {} bytes".format(len(raw)))
+        {%endif%}
         self.callback(self)
