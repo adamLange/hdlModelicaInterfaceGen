@@ -1,7 +1,13 @@
 import cocotb
 from cocotb.triggers import Timer, Edge, RisingEdge, FallingEdge, Join
+from cocotb.utils import get_sim_time
+import socket
+from JennyCocotbUtils import AxisStream, ClockDriver, StreamSinkFile, AxiLiteMaster
+import json
+from math import ceil
+import struct
 
-jsonString = {{json_string}}
+inputDict = {{json_string}}
 
 class ModelInterface:
 
@@ -16,14 +22,10 @@ class ModelInterface:
         self.listener = listener
         self.sock = sock
 
-        self.current_stream = AxisStream(dut.clk,
-                dut.i_axis_tdata,
-                dut.i_axis_tvalid,
-                dut.i_axis_tready)
-
         self.dut = dut
 
-        self.inputDict = json.loads(jsonString)
+        #self.inputDict = json(loads(jsonString))
+        self.inputDict = inputDict
 
         #self.events = []
         self.deltaT = []
@@ -31,18 +33,18 @@ class ModelInterface:
         #instantiate input port objects
         self.inputPorts = []
         for i in self.inputDict["modelica_interface_block_inputs"]:
-          if i["class"] == Real:
+          if i["type"] == "Real":
             self.inputPorts.append(RealPort(self,i))
           else:
-            raise Warning("unsupported input type: {}".format(i["class"]))
+            raise Warning("unsupported input type: {}".format(i["type"]))
 
         #instantiate output port objects
         self.outputPorts = []
         for i in self.inputDict["modelica_interface_block_outputs"]:
-          if i["class"] == Boolean:
+          if i["type"] == "Boolean":
             self.outputPorts.append(BooleanPort(self,i))
           else:
-            raise Warning("unsupported output type: {}".format(i["class"]))
+            raise Warning("unsupported output type: {}".format(i["type"]))
 
     @cocotb.coroutine
     def coupler(self):
@@ -54,30 +56,30 @@ class ModelInterface:
         while True:
 
             # receive incoming signal data from model
-            for i in inputPorts:
+            for i in self.inputPorts:
               i.recv()
 
             # run the controller until a new signal acquisition is requested by the controller 
             #print("waiting for rising edge of acquisition trigger")
             yield RisingEdge(self.dut.trigger)
             self.nextAcqTime = int(get_sim_time("ns"))
-            acqDeltaT = nextAcqTime - previousAcqTime
+            acqDeltaT = self.nextAcqTime - self.previousAcqTime
 
             # write out output events and time of the next signal acquisition event
 
-            for event in self.events:
-                outputValues.append(event.newValue)
+            #for event in self.events:
+            #    outputValues.append(event.newValue)
 
             # pad with negative deltaT events
-            numEvents = len(deltaT)
+            numEvents = len(self.deltaT)
             if numEvents > {{event_queue_max_depth}}:
                 raise Warning("event queue overflow!")
             for i in range({{event_queue_max_depth}}-numEvents):
-                deltaT.append(int(-123))
+                self.deltaT.append(int(-123))
 
             bmsg  = struct.pack(">i{{event_queue_max_depth}}i",
                                 acqDeltaT,
-                                *deltaT
+                                *self.deltaT
                                )
             self.sock.send(bmsg)
             self.deltaT = []
@@ -85,14 +87,14 @@ class ModelInterface:
             for i in self.outputPorts:
               i.sendEventData()
 
-            self.previousAcqTime = nextAcqTime
+            self.previousAcqTime = self.nextAcqTime
 
     @cocotb.coroutine
     def eventListener(self):
         while True:
-            yield RisingEdge(self.dut.event)
+            yield RisingEdge(self.dut.eventTrigger)
             tCapture = int(get_sim_time("ns"))
-            deltaT.append(tCapture - self.previousAcqTime))
+            self.deltaT.append(tCapture - self.previousAcqTime)
             for i in self.outputPorts:
                 i.capture()
 
@@ -105,24 +107,21 @@ class ModelInterface:
           return i
       return None
 
+def defaultCallback(portObj):
+  print("Warning: port {} uses default callback".format(portObj.name))
+
 class Port:
 
-    def __init__(self,interfaceObject):
+    def __init__(self,interfaceObject,d):
         self.interfaceObject = interfaceObject
-        self.queueDepth = self.interfaceObject.queueDepth
+        self.queueDepth = {{event_queue_max_depth}}
         self.name = d["name"]
         self.width = d["width"]
-
-    def setCallback(self,fn):
-        self._callback = fn
-
-    def callBack(self):
-        self._callback(self)
 
 class BooleanPort(Port):
 
     def __init__(self,interfaceObject,d):
-        super.__init__(interfaceObject)
+        super().__init__(interfaceObject,d)
         self.numChar = ceil(self.width / 8)
         self.signal = eval("self.interfaceObject.dut.{}".format(d["name"]))
         self.events = []
@@ -136,22 +135,28 @@ class BooleanPort(Port):
 
         for i in range(self.numChar):
           c = (value >> 8*i) & 0xFF
-          self.events.append(c)
+          self.events.append(bytes([c]))
 
     def sendEventData(self):
-        msg = struct.pack(">{}c".format(self.queueDepth*self.numChar),
-                *self.events,
-                (numChar*self.queueDepth-len(self.events))*[0])
+        z = ((self.numChar*(self.queueDepth-len(self.events)))*[bytes([0])])
+        print(self.events)
+        self.events.extend(z)
+        print(self.events)
+        packString = ">{}c".format(self.queueDepth*self.numChar)
+        print("pack string:{}".format(packString))
+        msg = struct.pack(packString,*self.events)
         self.interfaceObject.sock.send(msg)
         self.events = []
 
 class RealPort(Port):
 
     def __init__(self,interfaceObject,d):
-        super.__init__(interfaceObject)
-        self.callback = None
+        super().__init__(interfaceObject,d)
+        self.callback = defaultCallback
 
     def recv(self):
         raw = self.interfaceObject.sock.recv(self.width*4)
+        print("raw")
+        print(raw)
         self.y = struct.unpack(">{}i".format(self.width),raw)
-        self._callback(self)
+        self.callback(self)

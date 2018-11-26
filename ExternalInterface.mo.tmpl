@@ -1,7 +1,7 @@
 {{preamble}}
 package ControllerInterfaceUtilities
 model ControllerInterface
-  parameter String port = "8181" "port of listening controller simulation server";
+  parameter String port = "{{port}}" "port of listening controller simulation server";
 
   {% for port in outputPorts %}
   parameter {{port.modelica_type}} {{port.name}}_i {{port.index_slug}};

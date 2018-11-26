@@ -213,7 +213,6 @@ class BooleanPort(Port):
                "num_bytes":self.numStructElementsPerEvent\
                    *self.cosimulation_interface.event_queue_max_depth}
     t = self.cosimulation_interface.env.get_template('boolean_recv.c.tmpl')
-    print(t.render(**context))
     return t.render(**context)
 
 class RealPort(Port):
