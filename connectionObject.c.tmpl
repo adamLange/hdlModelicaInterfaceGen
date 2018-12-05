@@ -52,6 +52,7 @@ void* initConnectionObject(char *port){
     struct addrinfo hints, *servinfo, *p;
     int rv;
     char s[INET6_ADDRSTRLEN];
+    obj->numEvents = EVENT_QUEUE_MAX_DEPTH;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
